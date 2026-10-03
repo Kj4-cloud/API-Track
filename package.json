@@ -1,0 +1,16 @@
+{
+  "name": "api-token-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API Token Tracking & Subscription Management System",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --prefix apps/web",
+    "dev:server": "npm run dev --prefix apps/server",
+    "build:web": "npm run build --prefix apps/web",
+    "build:server": "npm run build --prefix apps/server",
+    "build": "npm run build:web && npm run build:server"
+  }
+}
