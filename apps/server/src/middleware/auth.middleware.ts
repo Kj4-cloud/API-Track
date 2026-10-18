@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { supabase } from '../config/supabase.js';
+import { verifyToken } from '../utils/auth.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -24,9 +24,9 @@ export const requireAuth = async (
     }
 
     const token = authHeader.split(' ')[1];
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const payload = verifyToken(token);
 
-    if (error || !user) {
+    if (!payload || !payload.id) {
       return res.status(401).json({
         success: false,
         message: 'Invalid or expired session token',
@@ -34,7 +34,7 @@ export const requireAuth = async (
       });
     }
 
-    req.user = { id: user.id, email: user.email };
+    req.user = { id: payload.id, email: payload.email };
     next();
   } catch (err) {
     next(err);

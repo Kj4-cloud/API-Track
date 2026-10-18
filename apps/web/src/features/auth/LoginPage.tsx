@@ -136,7 +136,7 @@ export const LoginPage: React.FC = () => {
                   href="#forgot"
                   onClick={(e) => {
                     e.preventDefault();
-                    toast.info('Password reset is sent via your configured Supabase Auth email.');
+                    toast.info('Please contact your administrator to reset password or re-register.');
                   }}
                   className="text-[11px] text-indigo-600 hover:underline"
                 >

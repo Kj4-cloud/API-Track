@@ -8,6 +8,8 @@ import {
   DollarSign,
   Activity,
   ArrowUpRight,
+  CreditCard,
+  KeyRound,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -36,6 +38,20 @@ import { formatCurrency, formatNumber } from '../../utils';
 import { CATEGORY_COLORS } from '../../constants';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
+
+const PROVIDER_COLORS: Record<string, string> = {
+  openai: '#10A37F',
+  aws: '#FF9900',
+  anthropic: '#D97706',
+  google: '#4285F4',
+  github: '#24292F',
+  azure: '#0078D4',
+  stripe: '#635BFF',
+  cohere: '#39594D',
+  other: '#64748B',
+};
+
+const COLOR_PALETTE = ['#4F46E5', '#0F766E', '#D97706', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#64748B'];
 
 export const AnalyticsPage: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
@@ -74,12 +90,7 @@ export const AnalyticsPage: React.FC = () => {
     });
 
     if (counts.size === 0) {
-      return [
-        { name: 'AI', value: 4, color: CATEGORY_COLORS.AI },
-        { name: 'Cloud', value: 3, color: CATEGORY_COLORS.Cloud },
-        { name: 'Database', value: 2, color: CATEGORY_COLORS.Database },
-        { name: 'Payments', value: 1, color: CATEGORY_COLORS.Payments },
-      ];
+      return [];
     }
 
     return Array.from(counts.entries()).map(([name, value]) => ({
@@ -95,44 +106,108 @@ export const AnalyticsPage: React.FC = () => {
     const staging = apis.filter((a) => a.environment === 'staging').length;
     const prod = apis.filter((a) => a.environment === 'production').length;
 
+    if (dev === 0 && staging === 0 && prod === 0) {
+      return [];
+    }
+
     return [
-      { name: 'Production', value: prod || 4, color: '#EF4444' },
-      { name: 'Staging', value: staging || 2, color: '#F59E0B' },
-      { name: 'Development', value: dev || 6, color: '#6366F1' },
-    ];
+      { name: 'Production', value: prod, color: '#EF4444' },
+      { name: 'Staging', value: staging, color: '#F59E0B' },
+      { name: 'Development', value: dev, color: '#6366F1' },
+    ].filter((item) => item.value > 0);
   }, [apis]);
 
-  // ── Cost Trends over 6 months ───────────────────────────────────────────
-  const costTrendData = useMemo(() => {
-    const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-    return months.map((m, idx) => ({
-      month: m,
-      openai: 1650 + idx * 350,
-      aws: 2800 + idx * 420,
-      anthropic: 1250 + idx * 280,
-      other: 850 + idx * 120,
-    }));
-  }, []);
-
-  // ── Usage volume trend ──────────────────────────────────────────────────
-  const usageVolumeTrend = useMemo(() => {
-    if (usageLogs.length > 0) {
-      return usageLogs.map((l) => ({
-        date: l.date.slice(5),
-        tokens: Number(l.tokens_used),
-        requests: Number(l.requests),
-      }));
+  // ── Cost Trends over 6 months by Provider ──────────────────────────────
+  const { costTrendData, activeProviders } = useMemo(() => {
+    const now = new Date();
+    const months: { key: string; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: d.toLocaleString('en', { month: 'short' }),
+      });
     }
-    return [
-      { date: '09-15', tokens: 110000, requests: 1200 },
-      { date: '09-17', tokens: 190000, requests: 2100 },
-      { date: '09-19', tokens: 240000, requests: 2800 },
-      { date: '09-21', tokens: 320000, requests: 3400 },
-      { date: '09-23', tokens: 280000, requests: 3100 },
-      { date: '09-25', tokens: 420000, requests: 4600 },
-      { date: '09-27', tokens: 510000, requests: 5200 },
-    ];
-  }, [usageLogs]);
+
+    const providerSet = new Set<string>();
+    const monthDataMap = new Map<string, Record<string, number>>();
+
+    months.forEach((m) => {
+      monthDataMap.set(m.key, { total: 0 });
+    });
+
+    // Aggregate usage log costs
+    usageLogs.forEach((log) => {
+      const d = new Date(log.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (monthDataMap.has(key)) {
+        const provider = (log.api_service?.provider || 'other').toLowerCase();
+        providerSet.add(provider);
+        const record = monthDataMap.get(key)!;
+        record[provider] = (record[provider] || 0) + Number(log.cost || 0);
+        record.total += Number(log.cost || 0);
+      }
+    });
+
+    // Distribute subscription recurring spend across months
+    subscriptions.forEach((sub) => {
+      if (sub.status !== 'active') return;
+      const provider = (sub.api_service?.provider || 'other').toLowerCase();
+      providerSet.add(provider);
+      const monthlyPrice =
+        sub.billing_cycle === 'monthly'
+          ? Number(sub.price)
+          : sub.billing_cycle === 'yearly'
+          ? Number(sub.price) / 12
+          : Number(sub.price) / 3;
+
+      months.forEach((m) => {
+        const record = monthDataMap.get(m.key)!;
+        if (!record[provider]) {
+          record[provider] = Math.round(monthlyPrice * 100) / 100;
+          record.total += record[provider];
+        }
+      });
+    });
+
+    const hasData = Array.from(monthDataMap.values()).some((r) => r.total > 0);
+    if (!hasData) {
+      return { costTrendData: [], activeProviders: [] };
+    }
+
+    const result = months.map((m) => {
+      const record = monthDataMap.get(m.key) || { total: 0 };
+      const row: Record<string, any> = { month: m.label };
+      providerSet.forEach((p) => {
+        row[p] = Math.round((record[p] || 0) * 100) / 100;
+      });
+      return row;
+    });
+
+    return { costTrendData: result, activeProviders: Array.from(providerSet) };
+  }, [usageLogs, subscriptions]);
+
+  // ── Usage volume trend filtered by TimeRange ────────────────────────────
+  const usageVolumeTrend = useMemo(() => {
+    if (usageLogs.length === 0) {
+      return [];
+    }
+
+    const now = Date.now();
+    const daysLimit = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : 365;
+    const cutoff = now - daysLimit * 24 * 60 * 60 * 1000;
+
+    const filtered = usageLogs
+      .filter((l) => new Date(l.date).getTime() >= cutoff)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return filtered.map((l) => ({
+      date: l.date.slice(5),
+      tokens: Number(l.tokens_used),
+      requests: Number(l.requests),
+      cost: Number(l.cost),
+    }));
+  }, [usageLogs, timeRange]);
 
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-300">
@@ -169,31 +244,53 @@ export const AnalyticsPage: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={costTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.6} />
-                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} tickFormatter={(v) => `₹${v}`} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
-                      color: '#0F172A',
-                      fontSize: '12px',
-                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-                    }}
-                    formatter={(val: any) => [`₹${val.toLocaleString('en-IN')}`, '']}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Area type="monotone" dataKey="openai" stackId="1" stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.8} name="OpenAI" />
-                  <Area type="monotone" dataKey="aws" stackId="1" stroke="#0F766E" fill="#0F766E" fillOpacity={0.8} name="AWS" />
-                  <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#D97706" fill="#D97706" fillOpacity={0.8} name="Anthropic" />
-                  <Area type="monotone" dataKey="other" stackId="1" stroke="#64748B" fill="#64748B" fillOpacity={0.8} name="Other" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {costTrendData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <CreditCard className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No expenditure history recorded</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                  Active subscriptions or usage costs will populate this provider breakdown.
+                </p>
+              </div>
+            ) : (
+              <div className="h-64 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={costTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.6} />
+                    <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} tickFormatter={(v: any) => `₹${v}`} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '6px',
+                        color: '#0F172A',
+                        fontSize: '12px',
+                        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                      }}
+                      formatter={(val: any) => [`₹${Number(val).toLocaleString('en-IN')}`, '']}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                    {activeProviders.map((provider, idx) => {
+                      const color = PROVIDER_COLORS[provider] || COLOR_PALETTE[idx % COLOR_PALETTE.length];
+                      const displayName = provider.charAt(0).toUpperCase() + provider.slice(1);
+                      return (
+                        <Area
+                          key={provider}
+                          type="monotone"
+                          dataKey={provider}
+                          stackId="1"
+                          stroke={color}
+                          fill={color}
+                          fillOpacity={0.8}
+                          name={displayName}
+                        />
+                      );
+                    })}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -206,27 +303,37 @@ export const AnalyticsPage: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={usageVolumeTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.6} />
-                  <XAxis dataKey="date" stroke="#94A3B8" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} tickFormatter={(v) => formatNumber(v)} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
-                      color: '#0F172A',
-                      fontSize: '12px',
-                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-                    }}
-                    formatter={(val: any) => [formatNumber(Number(val)), 'Requests']}
-                  />
-                  <Line type="monotone" dataKey="requests" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            {usageVolumeTrend.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <Activity className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No request telemetry recorded</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                  Log your daily requests and token velocity in the Usage tab.
+                </p>
+              </div>
+            ) : (
+              <div className="h-64 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={usageVolumeTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.6} />
+                    <XAxis dataKey="date" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} tickFormatter={(v: any) => formatNumber(v)} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '6px',
+                        color: '#0F172A',
+                        fontSize: '12px',
+                        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                      }}
+                      formatter={(val: any) => [formatNumber(Number(val)), 'Requests']}
+                    />
+                    <Line type="monotone" dataKey="requests" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -242,48 +349,60 @@ export const AnalyticsPage: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="h-52 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {categoryDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
-                      color: '#0F172A',
-                      fontSize: '12px',
-                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-                    }}
-                    formatter={(val: any) => [`${val} APIs`, 'Count']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
-              {categoryDistribution.map((c) => (
-                <div key={c.name} className="flex items-center justify-between p-1.5 rounded-md bg-slate-50">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
-                    <span className="font-medium text-slate-700">{c.name}</span>
-                  </div>
-                  <span className="font-semibold text-slate-900">{c.value}</span>
+            {categoryDistribution.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-52 text-center">
+                <KeyRound className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No API services tracked</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                  Register APIs to visualize category distribution.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="h-52 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {categoryDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '6px',
+                          color: '#0F172A',
+                          fontSize: '12px',
+                          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                        }}
+                        formatter={(val: any) => [`${val} APIs`, 'Count']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
+                  {categoryDistribution.map((c) => (
+                    <div key={c.name} className="flex items-center justify-between p-1.5 rounded-md bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
+                        <span className="font-medium text-slate-700">{c.name}</span>
+                      </div>
+                      <span className="font-semibold text-slate-900">{c.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -296,48 +415,60 @@ export const AnalyticsPage: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="h-52 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={envDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {envDistribution.map((entry, index) => (
-                      <Cell key={`cell-env-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
-                      color: '#0F172A',
-                      fontSize: '12px',
-                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-                    }}
-                    formatter={(val: any) => [`${val} APIs`, 'Environment']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="space-y-1.5 pt-2 text-xs">
-              {envDistribution.map((e) => (
-                <div key={e.name} className="flex items-center justify-between p-1.5 rounded-md bg-slate-50">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: e.color }} />
-                    <span className="font-medium text-slate-700">{e.name}</span>
-                  </div>
-                  <span className="font-mono font-semibold text-slate-900">{e.value} services</span>
+            {envDistribution.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-52 text-center">
+                <KeyRound className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No environments assigned</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                  Assign environments to your APIs to view deployment isolation.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="h-52 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={envDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {envDistribution.map((entry, index) => (
+                          <Cell key={`cell-env-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '6px',
+                          color: '#0F172A',
+                          fontSize: '12px',
+                          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                        }}
+                        formatter={(val: any) => [`${val} APIs`, 'Environment']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+
+                <div className="space-y-1.5 pt-2 text-xs">
+                  {envDistribution.map((e) => (
+                    <div key={e.name} className="flex items-center justify-between p-1.5 rounded-md bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: e.color }} />
+                        <span className="font-medium text-slate-700">{e.name}</span>
+                      </div>
+                      <span className="font-mono font-semibold text-slate-900">{e.value} services</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

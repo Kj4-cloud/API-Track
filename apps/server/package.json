@@ -9,10 +9,15 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

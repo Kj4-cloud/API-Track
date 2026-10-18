@@ -7,7 +7,18 @@ export class SubscriptionsController {
 
   getAll = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const data = await this.service.getUserSubscriptions(req.user!.id);
+      const query = typeof req.query.query === 'string' ? req.query.query : undefined;
+      const data = await this.service.getUserSubscriptions(req.user!.id, query);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getUpcoming = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const days = Number(req.query.days || 30);
+      const data = await this.service.getUpcomingSubscriptions(req.user!.id, days);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -17,6 +28,9 @@ export class SubscriptionsController {
   getOne = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const data = await this.service.getSubscriptionDetail(req.params.id, req.user!.id);
+      if (!data) {
+        return res.status(404).json({ success: false, message: 'Subscription not found' });
+      }
       res.json({ success: true, data });
     } catch (err) {
       next(err);

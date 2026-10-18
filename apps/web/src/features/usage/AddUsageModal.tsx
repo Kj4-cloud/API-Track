@@ -11,6 +11,7 @@ import { Label } from '../../components/ui/label';
 import { useAuth } from '../../hooks/useAuth';
 import { usageService } from '../../services/usage';
 import { apiServicesService } from '../../services/api-services';
+import { notificationsService } from '../../services/notifications';
 import type { ApiService, UsageLog, UsageLogFormData } from '../../types';
 
 const usageSchema = z.object({
@@ -72,6 +73,26 @@ export const AddUsageModal: React.FC<AddUsageModalProps> = ({
       if (targetApi) {
         const newTotal = (targetApi.tokens_used || 0) + values.tokens_used;
         await apiServicesService.updateUsage(values.api_id, newTotal);
+
+        // Automated threshold notification logic (PRD Section 12)
+        if (targetApi.token_limit > 0) {
+          const pct = Math.round((newTotal / targetApi.token_limit) * 100);
+          if (pct >= 100) {
+            await notificationsService.create(user.id, {
+              type: 'usage_warning',
+              title: `Quota Exceeded: ${targetApi.provider} (${targetApi.name})`,
+              message: `Token consumption reached ${newTotal.toLocaleString()} of ${targetApi.token_limit.toLocaleString()} limit (${pct}%). Immediate rotation or plan upgrade required.`,
+              link: `/apis/${targetApi.id}`,
+            }).catch(console.error);
+          } else if (pct >= 85) {
+            await notificationsService.create(user.id, {
+              type: 'usage_warning',
+              title: `Quota Warning: ${targetApi.provider} (${targetApi.name}) at ${pct}%`,
+              message: `Token consumption has reached ${newTotal.toLocaleString()} of ${targetApi.token_limit.toLocaleString()} configured capacity.`,
+              link: `/apis/${targetApi.id}`,
+            }).catch(console.error);
+          }
+        }
       }
 
       toast.success('Daily usage recorded successfully');

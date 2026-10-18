@@ -3,12 +3,16 @@ import { UsageRepository } from './usage.repository.js';
 export class UsageService {
   private repo = new UsageRepository();
 
-  async getUserUsage(userId: string) {
-    return this.repo.findAllByUser(userId);
+  async getUserUsage(userId: string, startDate?: string, endDate?: string) {
+    return this.repo.findAllByUser(userId, startDate, endDate);
   }
 
   async getUsageByApi(apiId: string, userId: string) {
     return this.repo.findByApiAndUser(apiId, userId);
+  }
+
+  async getAggregatedByApi(userId: string) {
+    return this.repo.getAggregatedByApi(userId);
   }
 
   async recordUsage(userId: string, data: any) {
@@ -26,5 +30,14 @@ export class UsageService {
 
   async deleteUsage(id: string, userId: string) {
     return this.repo.delete(id, userId);
+  }
+
+  async trackTelemetry(params: {
+    provider: string;
+    tokens_used: number;
+    requests: number;
+    cost: number;
+  }) {
+    return this.repo.trackTelemetry(params);
   }
 }

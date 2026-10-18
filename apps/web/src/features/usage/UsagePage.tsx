@@ -80,10 +80,10 @@ export const UsagePage: React.FC = () => {
     const totalCredits = logs.reduce((acc, l) => acc + Number(l.credits_used || 0), 0);
 
     return {
-      totalRequests: totalRequests || 148520,
-      totalTokens: totalTokens || 18450000,
-      totalCost: totalCost || 4350,
-      totalCredits: totalCredits || 120.5,
+      totalRequests,
+      totalTokens,
+      totalCost,
+      totalCredits,
     };
   }, [logs]);
 
@@ -238,13 +238,13 @@ export const UsagePage: React.FC = () => {
                       <div className="rounded-lg bg-slate-50 p-2">
                         <span className="text-[10px] text-slate-400 uppercase">Requests</span>
                         <div className="font-mono font-semibold text-slate-900">
-                          {formatNumber(serviceRequests || 12482)}
+                          {formatNumber(serviceRequests)}
                         </div>
                       </div>
                       <div className="rounded-lg bg-slate-50 p-2">
                         <span className="text-[10px] text-slate-400 uppercase">Tokens Used</span>
                         <div className="font-mono font-semibold text-slate-900">
-                          {formatNumber(used || 2400000)}
+                          {formatNumber(used)}
                         </div>
                       </div>
                       <div className="rounded-lg bg-slate-50 p-2">

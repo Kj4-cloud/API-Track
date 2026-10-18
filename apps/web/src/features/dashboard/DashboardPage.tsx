@@ -116,10 +116,10 @@ export const DashboardPage: React.FC = () => {
     return {
       totalApis,
       addedThisMonth,
-      monthlySpend: monthlySpend || 7200,
-      activeSubsCount: activeSubs.length || 4,
+      monthlySpend,
+      activeSubsCount: activeSubs.length,
       renewingSoon,
-      avgTokenUsagePct: Math.min(100, avgTokenUsagePct || 68.4),
+      avgTokenUsagePct: Math.min(100, avgTokenUsagePct),
     };
   }, [apis, subscriptions]);
 
@@ -140,12 +140,7 @@ export const DashboardPage: React.FC = () => {
     });
 
     if (map.size === 0) {
-      return [
-        { name: 'AI', value: 3800, color: CATEGORY_COLORS.AI },
-        { name: 'Cloud', value: 2400, color: CATEGORY_COLORS.Cloud },
-        { name: 'Database', value: 1200, color: CATEGORY_COLORS.Database },
-        { name: 'Other', value: 800, color: CATEGORY_COLORS.Other },
-      ];
+      return [];
     }
 
     return Array.from(map.entries()).map(([name, value]) => ({
@@ -157,14 +152,38 @@ export const DashboardPage: React.FC = () => {
 
   // ── Monthly Spending Trend (Bar Chart in INR) ─────────────────────────────
   const monthlySpendData = useMemo(() => {
-    const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-    const baseSpend = kpis.monthlySpend || 7200;
+    const monthMap = new Map<string, number>();
+    const now = new Date();
 
-    return months.map((m, idx) => ({
-      month: m,
-      spend: Math.round((baseSpend * (0.75 + idx * 0.05)) * 100) / 100,
+    // Generate last 6 months labels
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleString('en', { month: 'short' });
+      monthMap.set(label, 0);
+    }
+
+    // Aggregate usage log costs by month
+    usageLogs.forEach((log) => {
+      const d = new Date(log.date);
+      const label = d.toLocaleString('en', { month: 'short' });
+      if (monthMap.has(label)) {
+        monthMap.set(label, (monthMap.get(label) || 0) + Number(log.cost));
+      }
+    });
+
+    // If no usage log costs, distribute subscription spend across months
+    const hasUsageCosts = Array.from(monthMap.values()).some((v) => v > 0);
+    if (!hasUsageCosts && kpis.monthlySpend > 0) {
+      for (const [key] of monthMap) {
+        monthMap.set(key, Math.round(kpis.monthlySpend * 100) / 100);
+      }
+    }
+
+    return Array.from(monthMap.entries()).map(([month, spend]) => ({
+      month,
+      spend: Math.round(spend * 100) / 100,
     }));
-  }, [kpis.monthlySpend]);
+  }, [kpis.monthlySpend, usageLogs]);
 
   // ── Usage Over Time (Line / Area Chart) ───────────────────────────────────
   const usageTrendData = useMemo(() => {
@@ -177,20 +196,12 @@ export const DashboardPage: React.FC = () => {
       }));
     }
 
-    return [
-      { date: '09-21', tokens: 120000, requests: 1200, cost: 180 },
-      { date: '09-22', tokens: 180000, requests: 1850, cost: 260 },
-      { date: '09-23', tokens: 140000, requests: 1420, cost: 210 },
-      { date: '09-24', tokens: 290000, requests: 2800, cost: 440 },
-      { date: '09-25', tokens: 210000, requests: 2150, cost: 320 },
-      { date: '09-26', tokens: 340000, requests: 3500, cost: 580 },
-      { date: '09-27', tokens: 410000, requests: 4200, cost: 690 },
-    ];
+    return [];
   }, [usageLogs]);
 
   // ── Upcoming Renewals List (PRD Section 11 in INR) ─────────────────────────
   const upcomingRenewals = useMemo(() => {
-    const list = subscriptions
+    return subscriptions
       .filter((s) => s.status === 'active' && s.renewal_date)
       .map((s) => ({
         ...s,
@@ -199,37 +210,6 @@ export const DashboardPage: React.FC = () => {
       .filter((s) => s.daysUntil !== null && s.daysUntil >= 0)
       .sort((a, b) => (a.daysUntil ?? 999) - (b.daysUntil ?? 999))
       .slice(0, 5);
-
-    if (list.length === 0) {
-      return [
-        {
-          id: 'demo-1',
-          plan_name: 'Pro Tier',
-          price: 1650,
-          currency: 'INR',
-          daysUntil: 3,
-          api_service: { provider: 'OpenAI', name: 'GPT-4o API' },
-        },
-        {
-          id: 'demo-2',
-          plan_name: 'Team Plan',
-          price: 330,
-          currency: 'INR',
-          daysUntil: 8,
-          api_service: { provider: 'GitHub', name: 'GitHub Copilot' },
-        },
-        {
-          id: 'demo-3',
-          plan_name: 'Developer Support',
-          price: 2650,
-          currency: 'INR',
-          daysUntil: 12,
-          api_service: { provider: 'AWS', name: 'Cloud Infrastructure' },
-        },
-      ];
-    }
-
-    return list;
   }, [subscriptions]);
 
   const userName = profile?.name || user?.email?.split('@')[0] || 'Developer';
@@ -286,11 +266,11 @@ export const DashboardPage: React.FC = () => {
             ) : (
               <div>
                 <div className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
-                  {kpis.totalApis || 18}
+                  {kpis.totalApis}
                 </div>
                 <div className="mt-1 flex items-center text-xs text-slate-500">
                   <span className="text-emerald-700 font-medium mr-1 flex items-center">
-                    <ArrowUpRight className="h-3 w-3 inline" /> +{kpis.addedThisMonth || 2}
+                    <ArrowUpRight className="h-3 w-3 inline" /> +{kpis.addedThisMonth}
                   </span>
                   this month
                 </div>
@@ -318,10 +298,9 @@ export const DashboardPage: React.FC = () => {
                   {formatCurrency(kpis.monthlySpend)}
                 </div>
                 <div className="mt-1 flex items-center text-xs text-slate-500">
-                  <span className="text-emerald-700 font-medium mr-1 flex items-center">
-                    <ArrowUpRight className="h-3 w-3 inline" /> +12.5%
+                  <span className="text-slate-500">
+                    from {kpis.activeSubsCount} active plans
                   </span>
-                  vs last month
                 </div>
               </div>
             )}
@@ -352,7 +331,7 @@ export const DashboardPage: React.FC = () => {
                       <AlertTriangle className="h-3 w-3 inline" /> {kpis.renewingSoon} renewing soon
                     </span>
                   ) : (
-                    <span className="text-slate-500">2 renewing soon</span>
+                    <span className="text-slate-500">No upcoming renewals</span>
                   )}
                 </div>
               </div>
@@ -379,10 +358,9 @@ export const DashboardPage: React.FC = () => {
                   {formatPercentage(kpis.avgTokenUsagePct)}
                 </div>
                 <div className="mt-1 flex items-center text-xs text-slate-500">
-                  <span className="text-slate-600 font-medium mr-1 flex items-center">
-                    <ArrowUpRight className="h-3 w-3 inline" /> +4.2%
+                  <span className="text-slate-500">
+                    average usage cap
                   </span>
-                  average usage cap
                 </div>
               </div>
             )}
@@ -436,52 +414,62 @@ export const DashboardPage: React.FC = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full pt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={usageTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="usageGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#4F46E5" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.6} />
-                  <XAxis dataKey="date" stroke="#94A3B8" fontSize={11} tickLine={false} />
-                  <YAxis
-                    stroke="#94A3B8"
-                    fontSize={11}
-                    tickLine={false}
-                    tickFormatter={(val) =>
-                      usageMetric === 'cost'
-                        ? `₹${val}`
-                        : formatNumber(val)
-                    }
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
-                      color: '#0F172A',
-                      fontSize: '12px',
-                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-                    }}
-                    formatter={(val: any) => [
-                      usageMetric === 'cost' ? `₹${Number(val).toFixed(2)}` : formatNumber(Number(val)),
-                      usageMetric.toUpperCase(),
-                    ]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey={usageMetric}
-                    stroke="#4F46E5"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#usageGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {usageTrendData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <Activity className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No usage activity logged yet</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                  Record requests and token consumption to see real-time throughput velocity and cost graphs.
+                </p>
+              </div>
+            ) : (
+              <div className="h-64 w-full pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={usageTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="usageGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#4F46E5" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.6} />
+                    <XAxis dataKey="date" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                    <YAxis
+                      stroke="#94A3B8"
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(val: any) =>
+                        usageMetric === 'cost'
+                          ? `₹${val}`
+                          : formatNumber(val)
+                      }
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '6px',
+                        color: '#0F172A',
+                        fontSize: '12px',
+                        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                      }}
+                      formatter={(val: any) => [
+                        usageMetric === 'cost' ? `₹${Number(val).toFixed(2)}` : formatNumber(Number(val)),
+                        usageMetric.toUpperCase(),
+                      ]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey={usageMetric}
+                      stroke="#4F46E5"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#usageGradient)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -494,51 +482,63 @@ export const DashboardPage: React.FC = () => {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
-                      color: '#0F172A',
-                      fontSize: '12px',
-                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-                    }}
-                    formatter={(val: any) => [`₹${val}`, 'Monthly Spend']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Category Legend */}
-            <div className="mt-2 space-y-1.5">
-              {categoryData.slice(0, 4).map((item) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                    <span className="text-slate-600 font-medium">{item.name}</span>
-                  </div>
-                  <span className="font-mono font-semibold text-slate-900">
-                    ₹{item.value}
-                  </span>
+            {categoryData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-56 text-center">
+                <CreditCard className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No category spend recorded</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+                  Active subscriptions linked to API services will populate this distribution.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={70}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '6px',
+                          color: '#0F172A',
+                          fontSize: '12px',
+                          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+                        }}
+                        formatter={(val: any) => [`₹${val}`, 'Monthly Spend']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+
+                {/* Category Legend */}
+                <div className="mt-2 space-y-1.5">
+                  {categoryData.slice(0, 4).map((item) => (
+                    <div key={item.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="text-slate-600 font-medium">{item.name}</span>
+                      </div>
+                      <span className="font-mono font-semibold text-slate-900">
+                        ₹{item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -570,7 +570,7 @@ export const DashboardPage: React.FC = () => {
                     stroke="#94A3B8"
                     fontSize={11}
                     tickLine={false}
-                    tickFormatter={(val) => `₹${val}`}
+                    tickFormatter={(val: any) => `₹${val}`}
                   />
                   <Tooltip
                     contentStyle={{
@@ -604,44 +604,54 @@ export const DashboardPage: React.FC = () => {
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {upcomingRenewals.map((sub: any) => {
-                const days = sub.daysUntil ?? 0;
-                const isUrgent = days <= 3;
-                return (
-                  <div
-                    key={sub.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 p-3 transition-all hover:bg-slate-100/70"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 font-bold text-xs text-indigo-600">
-                        {sub.api_service?.provider?.[0] || 'S'}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-xs text-slate-900">
-                          {sub.api_service?.provider || 'Subscription'}
+            {upcomingRenewals.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Clock className="h-8 w-8 text-slate-300 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No renewals due soon</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Subscriptions with renewals in the next 30 days will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingRenewals.map((sub: any) => {
+                  const days = sub.daysUntil ?? 0;
+                  const isUrgent = days <= 3;
+                  return (
+                    <div
+                      key={sub.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 p-3 transition-all hover:bg-slate-100/70"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/10 font-bold text-xs text-indigo-600">
+                          {sub.api_service?.provider?.[0] || 'S'}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono">
-                          {sub.plan_name} • ₹{sub.price}
+                        <div>
+                          <div className="font-semibold text-xs text-slate-900">
+                            {sub.api_service?.provider || 'Subscription'}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {sub.plan_name} • ₹{sub.price}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="text-right">
-                      <Badge
-                        variant={isUrgent ? 'warning' : 'secondary'}
-                        dot
-                        className="text-[10px]"
-                      >
-                        {days === 0
-                          ? 'Renews today'
-                          : `in ${days} ${days === 1 ? 'day' : 'days'}`}
-                      </Badge>
+                      <div className="text-right">
+                        <Badge
+                          variant={isUrgent ? 'warning' : 'secondary'}
+                          dot
+                          className="text-[10px]"
+                        >
+                          {days === 0
+                            ? 'Renews today'
+                            : `in ${days} ${days === 1 ? 'day' : 'days'}`}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

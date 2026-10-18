@@ -8,6 +8,7 @@ const controller = new SubscriptionsController();
 router.use(requireAuth);
 
 router.get('/', controller.getAll);
+router.get('/upcoming', controller.getUpcoming);
 router.post('/', controller.create);
 router.get('/:id', controller.getOne);
 router.patch('/:id', controller.update);

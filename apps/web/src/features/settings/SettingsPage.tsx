@@ -21,7 +21,7 @@ import { Label } from '../../components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
-import { supabase } from '../../services/supabase';
+import { apiRequest } from '../../services/api-client';
 
 export const SettingsPage: React.FC = () => {
   const { user, profile, updateProfile } = useAuth();
@@ -78,8 +78,10 @@ export const SettingsPage: React.FC = () => {
 
     setUpdatingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
+      await apiRequest('/auth/password', {
+        method: 'POST',
+        body: JSON.stringify({ password: newPassword }),
+      });
       toast.success('Security credentials updated');
       setNewPassword('');
       setConfirmPassword('');
@@ -152,7 +154,7 @@ export const SettingsPage: React.FC = () => {
                 <div className="space-y-1.5">
                   <Label htmlFor="email">Email Address</Label>
                   <Input id="email" type="email" value={user?.email || ''} disabled className="bg-slate-100 text-slate-500" />
-                  <p className="text-[11px] text-slate-400">Email is managed by Supabase Authentication.</p>
+                  <p className="text-[11px] text-slate-400">Email is stored securely in SQLite database.</p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -219,7 +221,7 @@ export const SettingsPage: React.FC = () => {
             <CardHeader>
               <CardTitle className="text-sm">Password & Access</CardTitle>
               <CardDescription>
-                Update your account password using Supabase Auth.
+                Update your account password securely.
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -1,12 +1,22 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../services/supabase';
+import { apiRequest, getAuthToken, setAuthToken } from '../services/api-client';
 import type { Profile } from '../types';
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+export interface AuthSession {
+  access_token: string;
+  user?: AuthUser;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   profile: Profile | null;
-  session: Session | null;
+  session: AuthSession | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
@@ -17,69 +27,74 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (data) setProfile(data);
-  };
-
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
+    const initializeAuth = async () => {
+      const token = getAuthToken();
+      if (!token) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
+      try {
+        const data = await apiRequest<{ user: AuthUser; profile: Profile }>('/auth/me');
+        setUser(data.user);
+        setProfile(data.profile);
+        setSession({ access_token: token, user: data.user });
+      } catch {
+        // Token is invalid or expired
+        setAuthToken(null);
+        setUser(null);
         setProfile(null);
+        setSession(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    return () => subscription.unsubscribe();
+    initializeAuth();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error ? new Error(error.message) : null };
+    try {
+      const data = await apiRequest<{ token: string; user: AuthUser; profile: Profile }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+
+      setAuthToken(data.token);
+      setUser(data.user);
+      setProfile(data.profile);
+      setSession({ access_token: data.token, user: data.user });
+      return { error: null };
+    } catch (err: any) {
+      return { error: new Error(err.message || 'Failed to sign in') };
+    }
   };
 
   const signUp = async (email: string, password: string, name: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name } },
-    });
-    if (error) {
-      return { error: new Error(error.message) };
+    try {
+      const data = await apiRequest<{ token: string; user: AuthUser; profile: Profile }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, name }),
+      });
+
+      setAuthToken(data.token);
+      setUser(data.user);
+      setProfile(data.profile);
+      setSession({ access_token: data.token, user: data.user });
+      return { error: null };
+    } catch (err: any) {
+      return { error: new Error(err.message || 'Failed to register account') };
     }
-    if (!data.session) {
-      const signInRes = await supabase.auth.signInWithPassword({ email, password });
-      if (signInRes.error) {
-        return { error: new Error(signInRes.error.message) };
-      }
-    }
-    return { error: null };
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    setAuthToken(null);
     setUser(null);
     setProfile(null);
     setSession(null);
@@ -87,12 +102,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = async (data: Partial<Profile>) => {
     if (!user) return;
-    const { error } = await supabase
-      .from('profiles')
-      .update(data)
-      .eq('id', user.id);
-    if (!error) {
-      setProfile((prev) => (prev ? { ...prev, ...data } : null));
+    try {
+      const updated = await apiRequest<Profile>('/auth/profile', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      setProfile(updated);
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+      throw err;
     }
   };
 

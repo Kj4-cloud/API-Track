@@ -81,7 +81,7 @@ export const RegisterPage: React.FC = () => {
         </div>
 
         <div className="relative z-10 text-xs text-slate-500">
-          Encrypted with Supabase PostgreSQL Row Level Security.
+          Secured with local SQLite encryption and credential protection.
         </div>
       </div>
 

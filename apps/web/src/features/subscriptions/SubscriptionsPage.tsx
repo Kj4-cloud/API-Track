@@ -83,9 +83,9 @@ export const SubscriptionsPage: React.FC = () => {
     }).length;
 
     return {
-      monthlyTotal: monthlyTotal || 7200,
-      annualTotal: annualTotal || 86400,
-      activeCount: active.length || 4,
+      monthlyTotal,
+      annualTotal,
+      activeCount: active.length,
       dueIn7Days,
     };
   }, [subscriptions]);

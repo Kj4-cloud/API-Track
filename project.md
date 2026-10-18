@@ -22,7 +22,7 @@ Rather than looking like a generic academic CRUD application or an overly-decora
 | **Charts & Metrics** | Recharts | Responsive, clean visual representations |
 | **Toasts & Feedback** | Sonner | Minimalist, stacked SaaS notification toasts |
 | **Motion** | Framer Motion | Subtle micro-interactions, layout transitions |
-| **Database & Auth** | Supabase (PostgreSQL 17 + GoTrue Auth) | Managed relational DB, RLS security, JWT auth |
+| **Database & Auth** | SQLite (via better-sqlite3) + JWT + bcrypt | High-performance local relational DB with WAL mode, foreign keys, local auth |
 | **Backend Layer** | Node.js + Express + TypeScript | Controller → Service → Repository pattern for orchestration & aggregation |
 
 ### 2.2 System Flow Architecture
@@ -30,25 +30,27 @@ Rather than looking like a generic academic CRUD application or an overly-decora
 ┌────────────────────────────────────────────────────────┐
 │             Web Client (React + Vite + TS)             │
 │   Dashboard │ APIs │ Subscriptions │ Usage │ Analytics │
-└──────────────┬──────────────────────────┬──────────────┘
-               │ Direct Auth & RLS Queries│ API Requests
-               ▼                          ▼
-┌──────────────────────────────┐  ┌──────────────────────────────┐
-│        Supabase BaaS         │  │     Express API Server       │
-│  • GoTrue Auth (JWT)         │  │  Routes → Controllers        │
-│  • Postgres 17 (RLS Policies)│  │     ↓ Services               │
-│  • Storage & Realtime        │  │     ↓ Repositories           │
-└──────────────────────────────┘  └──────────────┬───────────────┘
-               ▲                                 │
-               └─────────────────────────────────┘
-                   Service Role / Admin Queries
+└───────────────────────────┬────────────────────────────┘
+                            │ API Requests (Bearer Token)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│               Express API Server (Node.js)             │
+│    Routes → Auth Middleware → Controllers → Services   │
+└───────────────────────────┬────────────────────────────┘
+                            │ Prepared SQL Statements (WAL)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│                 SQLite Database (Local)                │
+│    users │ profiles │ api_services │ subscriptions     │
+│    usage_logs │ notifications │ user_preferences       │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Database Architecture (Supabase PostgreSQL)
+## 3. Database Architecture (Local SQLite)
 
-The database is deployed on **Supabase** (`isxwonogwnnnyebsjhem.supabase.co`) with Row Level Security enabled across all tenant tables.
+The database runs on **SQLite** (`apps/server/data/tracker.db`) with Write-Ahead Logging (`WAL`) enabled for high concurrency and Foreign Keys enforced.
 
 ### 3.1 Entity Relationship Diagram
 ```text

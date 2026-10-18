@@ -1,49 +1,30 @@
-import { supabase } from './supabase';
+import { apiRequest } from './api-client';
 import type { Notification } from '../types';
 
 export const notificationsService = {
   async getAll(): Promise<Notification[]> {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
+    return apiRequest<Notification[]>('/notifications');
   },
 
   async getUnread(): Promise<Notification[]> {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('is_read', false)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
+    return apiRequest<Notification[]>('/notifications?unread=true');
   },
 
   async getUnreadCount(): Promise<number> {
-    const { count, error } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_read', false);
-    if (error) throw error;
-    return count || 0;
+    const res = await apiRequest<{ count: number }>('/notifications/unread-count');
+    return res?.count || 0;
   },
 
   async markAsRead(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', id);
-    if (error) throw error;
+    await apiRequest(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    });
   },
 
   async markAllAsRead(): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('is_read', false);
-    if (error) throw error;
+    await apiRequest('/notifications/mark-all-read', {
+      method: 'PATCH',
+    });
   },
 
   async create(userId: string, notification: {
@@ -52,23 +33,18 @@ export const notificationsService = {
     message: string;
     link?: string;
   }): Promise<Notification> {
-    const { data, error } = await supabase
-      .from('notifications')
-      .insert({
-        user_id: userId,
+    return apiRequest<Notification>('/notifications', {
+      method: 'POST',
+      body: JSON.stringify({
         ...notification,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+        user_id: userId,
+      }),
+    });
   },
 
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    await apiRequest(`/notifications/${id}`, {
+      method: 'DELETE',
+    });
   },
 };

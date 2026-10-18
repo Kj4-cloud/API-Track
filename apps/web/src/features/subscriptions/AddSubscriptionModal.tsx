@@ -63,13 +63,13 @@ export const AddSubscriptionModal: React.FC<AddSubscriptionModalProps> = ({
     defaultValues: {
       api_id: initialData?.api_id || defaultApiId || '',
       plan_name: initialData?.plan_name || '',
-      price: initialData?.price || 1650,
+      price: initialData?.price ?? 0,
       currency: initialData?.currency || 'INR',
       billing_cycle: initialData?.billing_cycle || 'monthly',
       start_date: initialData?.start_date || new Date().toISOString().split('T')[0],
       renewal_date: initialData?.renewal_date || '',
       auto_renew: initialData?.auto_renew ?? true,
-      payment_method: initialData?.payment_method || 'UPI / Corporate Card',
+      payment_method: initialData?.payment_method || '',
     },
   });
 
