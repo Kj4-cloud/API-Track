@@ -143,3 +143,10 @@ npm run build:web
 npm run build:server
 ```
 Both builds produce 0 errors.
+
+---
+
+## Architecture & Roadmap
+- [System Blueprint & Database Spec](file:///c:/Users/Lenovo/Desktop/Api-Token%20tracker/project.md)
+- [Future Scope: Automated Leak Detection & Kill-Switch Architecture](file:///c:/Users/Lenovo/Desktop/Api-Token%20tracker/futurescope.md)
+
